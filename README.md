@@ -1,4 +1,5 @@
 # Emergent social transmission of model-based representations without inference
+Code for the simulations and analyses from “Emergent social transmission of model-based representations without inference” (arXiv:2604.05777), demonstrating how simple social cues can drive the emergence of model-based representations. 
 
 ## How to run the simulations
 To run the simulation of an agent, run *python -m simulations sim_typeoflearning_typeofagent* from the root folder. For example, simulate the model-based decision-bias agent, run the file *sim_mb_dbias.py*.
