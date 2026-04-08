@@ -1,0 +1,10 @@
+saved/*
+!saved/opti_results/
+!saved/opti_results/**
+!saved/true_q_values_exp2.json
+!saved/true_q_values_exp3.json
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+*.npz
+
