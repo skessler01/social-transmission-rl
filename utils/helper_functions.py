@@ -121,14 +121,14 @@ def decision_bias(env, exp_states,
                     agent_location, agent_state, 
                     value, params, world, 
                     episode, t, reward_placed, 
-                    rng):
+                    rng, modelbased, transition_belief):
     
     social_p = rng.random() < params['omega']
 
     # social policy
     pi_soc = social_policy(env, world, 
                              exp_states, episode, t, 
-                             agent_state, agent_location, reward_placed)
+                             agent_state, agent_location, reward_placed, modelbased, transition_belief)
     # asocial policy
     pi_asoc, _ = softmax_policy(value, agent_state, 
                                env.n_actions, params['beta'], rng)
@@ -232,8 +232,35 @@ def load_data(name):
     return tuple(arrays)
 
 
+def compute_expected_distance_to_expert(
+    expert_state, transition_belief, n_states, max_iter=200, tol=1e-4
+):
+    """
+    Value iteration: V(s) = min_a Σ_{s'} P(s'|s,a) * (1 + V(s')) with V(expert_state) = 0
+    Returns the expected distance from each state to the expert state based on the agent's transition belief.
+    """
+    V = np.full(n_states, np.inf)
+    V[expert_state] = 0.0 # Agent reached expert state, so distance is 0
+
+    for _ in range(max_iter):
+        with np.errstate(invalid='ignore'):
+            # (n_states, n_actions, n_states) * (n_states,) → (n_states, n_actions)
+            expected_values = np.nansum(transition_belief * (1 + V), axis=2) # shape (n_states, n_actions)
+
+        V_new = np.nanmin(expected_values, axis=1) # shape (n_states,)
+        V_new[expert_state] = 0.0 
+
+        finite_mask = np.isfinite(V_new) & np.isfinite(V)
+        delta = np.max(np.abs(V_new[finite_mask] - V[finite_mask])) if np.any(finite_mask) else np.inf
+
+        V = V_new
+        if delta < tol:
+            break
+
+    return V
+
 #@njit #doesnt work w/ njit bc Numba cannot handle costum pytjon classes (here: env)
-def social_policy(env, world, exp_states, episode, t, agent_state, agent_location, reward_placed):
+def social_policy(env, world, exp_states, episode, t, agent_state, agent_location, reward_placed, modelbased, transition_belief):
     """
     Finds the action that reduces the distance from agent's to expert's state
 
@@ -244,6 +271,8 @@ def social_policy(env, world, exp_states, episode, t, agent_state, agent_locatio
     t: Current step (int)
     agent_state: Agent's state (int)
     agent_location: Agent's location (tuple)
+    modelbased: Boolean indicating whether the agent is model-based or model-free (bool)
+    transition_belief: Transition belief of the agent (n_states, n_actions, n_states) - only used for model-based agents
 
     Returns:
     np_array: Prob distr pi_social, where 1 is assigned to action reducing distance to expert
@@ -251,36 +280,49 @@ def social_policy(env, world, exp_states, episode, t, agent_state, agent_locatio
 
     # FIND THE LOCATION OF THE EXPERT
     if  ~np.isnan(exp_states[episode, t]):
-      
+        
+        expert_state = int(exp_states[episode, t])
         # Find the location of the expert - has to be this way for Euclidean distance
         expert_location = np.column_stack(np.where(world == exp_states[episode, t])).reshape(2,)
       
     # If exper has found the reward - Find the last location
     else:
         last_loc_t = (~np.isnan(exp_states[episode, :])).cumsum().argmax()
+        expert_state = int(exp_states[episode, last_loc_t])
         expert_location = np.column_stack(
             np.where(world == exp_states[episode, last_loc_t])
             ).reshape(2,)
-    
+
     # CALCULATE THE NUMBER OF STEPS TO THE EXPERT
     dist = np.zeros(4)
-    actions = np.array(range(0,4))
-    for a in actions:
-        next_agent_location, next_state = env.move_agent(a, 
-                                                         agent_state, 
-                                                         agent_location, 
-                                                         reward_placed)
-        if next_state is None:
-            dist[a] = np.inf
-        #print("next_agent_location", next_agent_location)
-        else:
+    # Return new location based on the action
 
+    if modelbased:
+        n_states = transition_belief.shape[0]
+
+        # Expected distance from every state to expert
+        V = compute_expected_distance_to_expert(expert_state, transition_belief, n_states)
+
+        for a in range(4):
+            probs = transition_belief[agent_state, a]
+
+            if np.sum(probs) == 0: # Action not possible or unknown
+                dist[a] = np.inf
+                continue
+
+            with np.errstate(invalid='ignore'): # Ignore warnings for inf values in V
+             dist[a] = np.nansum(probs * V)
+    else:
+        # Don't consider walls or boundaries
+        for a in range(4):
+            next_agent_location = env.get_naive_next_location(a, agent_location)
             dist[a] = (np.abs(expert_location[0] - next_agent_location[0]) + 
-                       np.abs(expert_location[1] - next_agent_location[1]))
+                        np.abs(expert_location[1] - next_agent_location[1]))
 
-    # CHOSE THE ACTION THAT REDUCES THE DISTANCE
-    # Find where distance is minimum
+
+    # Choose the action with the minimum distance to the expert
     action = np.argmin(dist)
+
 
     # Create one-hot probability distribution over all actions (for mixing of policies)
     pi_social = np.zeros(4)

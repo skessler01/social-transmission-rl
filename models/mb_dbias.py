@@ -87,7 +87,9 @@ def mb_policy(env,
                                          agent_location, 
                                          state, value, 
                                          params, world, episode, t, reward_placed,
-                                         rng)
+                                         rng,
+                                         modelbased = True,
+                                         transition_belief = transition_belief)
 
             
             # Test

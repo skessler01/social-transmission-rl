@@ -59,7 +59,7 @@ def mf_policy(env, rewards_info, experts_states, experts_actions,
                 action = decision_bias(env, exp_states, agent_location, 
                                          state, value, 
                                          params, world, episode, t, reward_placed,
-                                         rng=rng)
+                                         rng=rng, modelbased = False, transition_belief=None)
             
             # Test
             else:
