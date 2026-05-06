@@ -293,22 +293,28 @@ def compute_true_value_function(true_tms, reward_info, discount_factor=0.99, the
     n_simulations, n_states, n_actions, _ = np.array(true_tms).shape
 
     # Initialize true Q values
-    true_q_values = np.zeros((n_simulations, n_states, n_actions))
+    true_q_values = np.ones((n_simulations, n_states, n_actions))
 
     for sim in range(n_simulations):
         # Get transition probabilities (same for all episodes)
         P = true_tms[sim]
 
-        # Get reward per state (default -1 for non-reward states)
-        R = np.full(n_states, -1.0, dtype=float)
+        # Get reward per state 
+        R = np.zeros(n_states, dtype=float)
+        count = np.zeros(n_states, dtype=int) 
         is_goal = np.zeros(n_states, dtype=bool)
-        for state, reward in reward_info[sim][0]: # Same rewards for all episodes
-            R[int(state)] = reward 
-            if reward > 0:  # Mark goal states
-                is_goal[int(state)] = True
+        for episode in reward_info[sim]: 
+            for state, reward in episode:
+                R[int(state)] += reward 
+                count[int(state)] += 1
+                if reward > 0:  # Mark goal states
+                    is_goal[int(state)] = True
+        
+        count[count == 0] = 1  # Avoid division by zero
+        R = R/count
 
         # Value iteration
-        Q = np.zeros((n_states, n_actions))
+        Q = np.ones((n_states, n_actions))
 
         for i in range(max_iter):
             delta = 0
