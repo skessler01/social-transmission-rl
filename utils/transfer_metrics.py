@@ -305,13 +305,15 @@ def compute_true_value_function(true_tms, reward_info, discount_factor=0.99, the
         is_goal = np.zeros(n_states, dtype=bool)
         for episode in reward_info[sim]: 
             for state, reward in episode:
-                R[int(state)] += reward 
-                count[int(state)] += 1
                 if reward > 0:  # Mark goal states
                     is_goal[int(state)] = True
-        
+                else:
+                    reward = -1 # Moving cost
+                R[int(state)] += reward 
+                count[int(state)] += 1
+
         count[count == 0] = 1  # Avoid division by zero
-        R = R/count
+        R = R/count # Average reward per state across episodes (because ofto account for noise in rewards)
 
         # Value iteration
         Q = np.ones((n_states, n_actions))
